@@ -1,7 +1,9 @@
 mod audio;
+mod transcriber;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use audio::AudioRecorderState;
+use transcriber::WhisperTranscriber;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -27,7 +29,30 @@ pub fn run() {
                             }
                         }
                         ShortcutState::Released => {
-                            recorder.stop_recording();
+                            let pcm_data = recorder.stop_recording_and_extract_pcm16k();
+                            if pcm_data.is_empty() {
+                                println!("No audio recorded.");
+                                return;
+                            }
+
+                            if let Some(transcriber) = app.try_state::<Arc<WhisperTranscriber>>() {
+                                let transcriber = transcriber.inner().clone();
+                                std::thread::spawn(move || {
+                                    println!("Transcribing audio...");
+                                    match transcriber.transcribe(&pcm_data) {
+                                        Ok(text) => {
+                                            if text.is_empty() {
+                                                println!("\n=== TRANSCRIPTION ===\n[No speech detected]\n=====================\n");
+                                            } else {
+                                                println!("\n=== TRANSCRIPTION ===\n{}\n=====================\n", text);
+                                            }
+                                        }
+                                        Err(e) => eprintln!("Transcription error: {}", e),
+                                    }
+                                });
+                            } else {
+                                eprintln!("WhisperTranscriber state is not available.");
+                            }
                         }
                     }
                 })
@@ -35,6 +60,25 @@ pub fn run() {
         )
         .manage(Mutex::new(AudioRecorderState::default()))
         .setup(|app| {
+            let model_path = if std::path::Path::new("models/ggml-small.en.bin").exists() {
+                "models/ggml-small.en.bin"
+            } else if std::path::Path::new("src-tauri/models/ggml-small.en.bin").exists() {
+                "src-tauri/models/ggml-small.en.bin"
+            } else {
+                eprintln!("Warning: GGML model not found at models/ggml-base.en.bin!");
+                "models/ggml-base.en.bin"
+            };
+
+            match WhisperTranscriber::new(model_path) {
+                Ok(transcriber) => {
+                    println!("Successfully loaded Whisper model from: {}", model_path);
+                    app.manage(Arc::new(transcriber));
+                }
+                Err(e) => {
+                    eprintln!("Failed to initialize Whisper model: {}", e);
+                }
+            }
+
             let hotkey = "CmdOrCtrl+Alt+Space";
             if let Err(err) = app.global_shortcut().register(hotkey) {
                 eprintln!("Warning: Failed to register shortcut '{}': {:?}", hotkey, err);
@@ -48,4 +92,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
