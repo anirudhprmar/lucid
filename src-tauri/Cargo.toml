@@ -26,6 +26,8 @@ tauri-plugin-global-shortcut = "2"
 cpal = "0.15"
 global-hotkey = "0.6"
 whisper-rs = "0.16"
+enigo = "0.2"
+arboard = "3"
 
 
 

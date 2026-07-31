@@ -1,11 +1,12 @@
 mod audio;
+mod paste;
 mod transcriber;
 
-use std::sync::{Arc, Mutex};
 use audio::AudioRecorderState;
-use transcriber::WhisperTranscriber;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use transcriber::WhisperTranscriber;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -45,6 +46,9 @@ pub fn run() {
                                                 println!("\n=== TRANSCRIPTION ===\n[No speech detected]\n=====================\n");
                                             } else {
                                                 println!("\n=== TRANSCRIPTION ===\n{}\n=====================\n", text);
+                                            if let Err(e) = paste::paste_text(&text) {
+                                                eprintln!("Failed to paste: {}", e);
+                                            }
                                             }
                                         }
                                         Err(e) => eprintln!("Transcription error: {}", e),
