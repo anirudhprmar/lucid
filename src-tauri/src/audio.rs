@@ -1,11 +1,14 @@
+use cpal::{
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+    SampleFormat, Stream,
+};
 use std::sync::{Arc, Mutex};
-use cpal::{SampleFormat, Stream, traits::{DeviceTrait, HostTrait, StreamTrait}};
 
 pub struct AudioRecorderState {
     pub stream: Option<Stream>,
     pub buffer: Arc<Mutex<Vec<f32>>>,
     pub sample_rate: u32,
-    pub channels: u16
+    pub channels: u16,
 }
 
 unsafe impl Send for AudioRecorderState {}
@@ -17,7 +20,7 @@ impl Default for AudioRecorderState {
             stream: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             sample_rate: 16000,
-            channels: 1
+            channels: 1,
         }
     }
 }
@@ -27,7 +30,10 @@ pub fn to_mono(interleaved: &[f32], channels: u16) -> Vec<f32> {
         return interleaved.to_vec();
     }
     let ch = channels as usize;
-    interleaved.chunks_exact(ch).map(|chunk| chunk.iter().sum::<f32>() / ch as f32).collect()
+    interleaved
+        .chunks_exact(ch)
+        .map(|chunk| chunk.iter().sum::<f32>() / ch as f32)
+        .collect()
 }
 
 pub fn resample_to_16k(mono_samples: &[f32], src_rate: u32) -> Vec<f32> {
@@ -63,14 +69,19 @@ impl AudioRecorderState {
         }
 
         let host = cpal::default_host();
-        let device = host.default_input_device().ok_or("Failed to get default audio input")?;
+        let device = host
+            .default_input_device()
+            .ok_or("Failed to get default audio input")?;
 
         let config = device.default_input_config()?;
 
         self.sample_rate = config.sample_rate().0;
         self.channels = config.channels();
 
-        println!("Recording started using {} Hz, {} channels(s)", self.sample_rate, self.channels);
+        println!(
+            "Recording started using {} Hz, {} channels(s)",
+            self.sample_rate, self.channels
+        );
 
         let err_fn = |err| eprintln!("Audio Stream error: {}", err);
 
@@ -88,7 +99,7 @@ impl AudioRecorderState {
                 None,
             )?,
             SampleFormat::I16 => device.build_input_stream(
-                &config.into(), 
+                &config.into(),
                 move |data: &[i16], _: &_| {
                     if let Ok(mut buf) = buffer_clone.lock() {
                         buf.extend(data.iter().map(|&s| s as f32 / i16::MAX as f32));
@@ -98,7 +109,7 @@ impl AudioRecorderState {
                 None,
             )?,
             SampleFormat::U16 => device.build_input_stream(
-                &config.into(), 
+                &config.into(),
                 move |data: &[u16], _: &_| {
                     if let Ok(mut buf) = buffer_clone.lock() {
                         buf.extend(data.iter().map(|&s| (s as f32 - 32768.0) / 32768.0));
@@ -115,7 +126,7 @@ impl AudioRecorderState {
         println!("recording started");
         Ok(())
     }
-    
+
     #[allow(dead_code)]
     pub fn stop_recording(&mut self) {
         if let Some(stream) = self.stream.take() {
@@ -125,7 +136,7 @@ impl AudioRecorderState {
 
         if let Ok(buf) = self.buffer.lock() {
             println!("Captured raw audio buffer: {} samples in memory", buf.len());
-        }  
+        }
     }
 
     pub fn stop_recording_and_extract_pcm16k(&mut self) -> Vec<f32> {
@@ -141,7 +152,7 @@ impl AudioRecorderState {
         };
 
         println!("Captured raw audio: {} samples", raw_data.len());
-        
+
         let mono_samples = to_mono(&raw_data, self.channels);
         let pcm16k_samples = resample_to_16k(&mono_samples, self.sample_rate);
 

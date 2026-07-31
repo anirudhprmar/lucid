@@ -12,9 +12,24 @@
   "app": {
     "windows": [
       {
-        "title": "lucid",
+        "title": "main",
         "width": 800,
         "height": 600
+      },
+      {
+        "label": "notch",
+        "url": "index.html",
+        "width": 300,
+        "height": 40,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "center": false,
+        "x": 660,
+        "y": 0
       }
     ],
     "security": {

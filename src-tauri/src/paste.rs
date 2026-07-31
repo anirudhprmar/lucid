@@ -13,14 +13,10 @@ pub fn paste_text(text: &str) -> Result<(), Box<dyn std::error::Error + Send + S
         clipboard.get_text().ok()
     };
 
-    println!("saved: {:?}", saved);
-
     {
         let mut clipboard = Clipboard::new()?;
         clipboard.set_text(text)?;
     }
-
-    println!("text: {}", text);
 
     let mut enigo = Enigo::new(&Settings::default())?;
     enigo.key(Key::Control, Direction::Press)?;

@@ -19,7 +19,8 @@ impl WhisperTranscriber {
             .to_str()
             .ok_or_else(|| "Invalid UTF-8 string in model path".to_string())?;
 
-        let context = WhisperContext::new_with_params(path_str, WhisperContextParameters::default())?;
+        let context =
+            WhisperContext::new_with_params(path_str, WhisperContextParameters::default())?;
 
         Ok(Self { context })
     }

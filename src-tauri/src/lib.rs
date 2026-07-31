@@ -4,14 +4,9 @@ mod transcriber;
 
 use audio::AudioRecorderState;
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use transcriber::WhisperTranscriber;
-
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,6 +20,10 @@ pub fn run() {
 
                     match event.state() {
                         ShortcutState::Pressed => {
+                            if let Err(e) = app.emit("notch-state", "listening") {
+                                eprintln!("Failed to emit notch state listening: {}", e);
+                            }
+
                             if let Err(e) = recorder.start_recording() {
                                 eprintln!("Failed to start recording: {}", e);
                             }
@@ -33,11 +32,19 @@ pub fn run() {
                             let pcm_data = recorder.stop_recording_and_extract_pcm16k();
                             if pcm_data.is_empty() {
                                 println!("No audio recorded.");
+                                if let Err(e) = app.emit("notch-state", "idle") {
+                                    eprintln!("Failed to emit notch state idle: {}", e);
+                                }
                                 return;
+                            }
+
+                            if let Err(e) = app.emit("notch-state", "transcribing") {
+                                eprintln!("Failed to emit notch state transcribing: {}", e);
                             }
 
                             if let Some(transcriber) = app.try_state::<Arc<WhisperTranscriber>>() {
                                 let transcriber = transcriber.inner().clone();
+                                let app_handle = app.clone();
                                 std::thread::spawn(move || {
                                     println!("Transcribing audio...");
                                     match transcriber.transcribe(&pcm_data) {
@@ -46,16 +53,23 @@ pub fn run() {
                                                 println!("\n=== TRANSCRIPTION ===\n[No speech detected]\n=====================\n");
                                             } else {
                                                 println!("\n=== TRANSCRIPTION ===\n{}\n=====================\n", text);
-                                            if let Err(e) = paste::paste_text(&text) {
-                                                eprintln!("Failed to paste: {}", e);
-                                            }
+                                                if let Err(e) = paste::paste_text(&text) {
+                                                    eprintln!("Failed to paste: {}", e);
+                                                }
                                             }
                                         }
                                         Err(e) => eprintln!("Transcription error: {}", e),
                                     }
+
+                                    if let Err(e) = app_handle.emit("notch-state", "idle") {
+                                        eprintln!("Failed to emit notch state idle: {}", e);
+                                    }
                                 });
                             } else {
                                 eprintln!("WhisperTranscriber state is not available.");
+                                if let Err(e) = app.emit("notch-state", "idle") {
+                                    eprintln!("Failed to emit notch state idle: {}", e);
+                                }
                             }
                         }
                     }
@@ -64,6 +78,16 @@ pub fn run() {
         )
         .manage(Mutex::new(AudioRecorderState::default()))
         .setup(|app| {
+            let notch = app.get_webview_window("notch").unwrap();
+            let monitor = notch.current_monitor()?.unwrap();
+            let screen_width = monitor.size().width;
+            let x = (screen_width - 300) / 2;
+            notch.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: x as i32, y: 0 }))?;
+            notch.set_ignore_cursor_events(true)?;
+
+            let main = app.get_webview_window("main").unwrap();
+            main.hide()?;
+
             let model_path = if std::path::Path::new("models/ggml-small.en.bin").exists() {
                 "models/ggml-small.en.bin"
             } else if std::path::Path::new("src-tauri/models/ggml-small.en.bin").exists() {
@@ -92,7 +116,6 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
