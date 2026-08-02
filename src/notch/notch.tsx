@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import Waveform from './waveform';
 import Spinner from './spinner';
+import { motion } from 'motion/react';
 
 type NotchState = 'idle' | 'listening' | 'transcribing';
 
@@ -19,13 +20,34 @@ export default function Notch() {
     };
   }, []);
 
+  const dockVariants = {
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: {
+        when: 'afterChildren',
+      },
+    },
+    hidden: {
+      opacity: 0,
+      scale: 0,
+      transition: {
+        when: 'beforeChildren',
+      },
+    },
+  };
+
   return (
-    <div
-      className={`flex h-full items-center justify-center rounded-full bg-black/85 transition-opacity duration-150 ease-out ${state === 'idle' ? 'opacity-0' : 'opacity-100'} `}
-    >
-      hi
-      {state === 'listening' && <Waveform />}
-      {state === 'transcribing' && <Spinner />}
+    <div className='flex h-screen items-center justify-center'>
+      <motion.div
+        className={`flex h-9 w-10 items-center justify-center rounded-lg bg-black/85`}
+        initial={state === 'idle' ? 'hidden' : 'visible'}
+        animate={state === 'idle' ? 'hidden' : 'visible'}
+        variants={dockVariants}
+      >
+        {state === 'listening' && <Waveform />}
+        {state === 'transcribing' && <Spinner />}
+      </motion.div>
     </div>
   );
 }

@@ -4,6 +4,8 @@ mod transcriber;
 
 use audio::AudioRecorderState;
 use std::sync::{Arc, Mutex};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use transcriber::WhisperTranscriber;
@@ -87,6 +89,19 @@ pub fn run() {
 
             let main = app.get_webview_window("main").unwrap();
             main.hide()?;
+
+            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&quit])?;
+
+            TrayIconBuilder::new()
+            .icon(app.default_window_icon().unwrap().clone())
+            .menu(&menu)
+            .on_menu_event(|app, event| {
+                if event.id() == "quit" {
+                    app.exit(0);
+                }
+            })
+            .build(app)?;
 
             let model_path = if std::path::Path::new("models/ggml-small.en.bin").exists() {
                 "models/ggml-small.en.bin"
