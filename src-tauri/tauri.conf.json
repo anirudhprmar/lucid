@@ -9,6 +9,14 @@
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE3REUwQTQ0QjUxOUY5OEUKUldTTytSbTFSQXJlcCtHcEJtS2lkekE2cHBCRDRvZldLTDA1bHd4cDN2S1E5SGFDWFFBQnRkSzIK",
+      "endpoints": [
+        "https://github.com/anirudhprmar/lucid/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "app": {
     "windows": [
       {

@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "global-shortcut:default"
+    "global-shortcut:default",
+    "process:default",
+    "updater:default"
   ]
 }
