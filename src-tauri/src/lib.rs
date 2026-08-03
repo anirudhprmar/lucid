@@ -103,7 +103,8 @@ pub fn run() {
             main.hide()?;
 
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit])?;
+            let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&quit, &settings_item])?;
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -111,6 +112,11 @@ pub fn run() {
                 .on_menu_event(|app, event| {
                     if event.id() == "quit" {
                         app.exit(0);
+                    } else if event.id() == "settings" {
+                        if let Some(main) = app.get_webview_window("main") {
+                            main.show().ok();
+                            main.set_focus().ok();
+                        }
                     }
                 })
                 .build(app)?;
