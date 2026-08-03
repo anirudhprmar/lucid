@@ -28,8 +28,9 @@ global-hotkey = "0.6"
 whisper-rs = "0.16"
 enigo = "0.2"
 arboard = "3"
-
-
+futures-util = "0.3"
+reqwest = { version = "0.13", features = ["stream"] }
+tokio = "1"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

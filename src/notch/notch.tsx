@@ -4,7 +4,7 @@ import Waveform from './waveform';
 import Spinner from './spinner';
 import { motion } from 'motion/react';
 
-type NotchState = 'idle' | 'listening' | 'transcribing';
+type NotchState = 'idle' | 'listening' | 'transcribing' | 'not-ready';
 
 export default function Notch() {
   const [state, setState] = useState<NotchState>('idle');
@@ -47,6 +47,9 @@ export default function Notch() {
       >
         {state === 'listening' && <Waveform />}
         {state === 'transcribing' && <Spinner />}
+        {state === 'not-ready' && (
+          <div className='text-sm text-white'>Model not ready yet</div>
+        )}
       </motion.div>
     </div>
   );
