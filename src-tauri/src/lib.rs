@@ -13,7 +13,7 @@ use transcriber::WhisperTranscriber;
 
 #[tauri::command]
 fn check_model_exists(app: tauri::AppHandle) -> bool {
-    const MODEL_NAME: &str = "ggml-small.en.bin";
+    const MODEL_NAME: &str = "ggml-small-q5_1.bin";
     model::find_existing_model(&app, MODEL_NAME).is_some()
 }
 

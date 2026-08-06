@@ -39,7 +39,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-On its first run, Lucid opens the setup window while it downloads `ggml-small.en.bin`. Keep the app open until the download completes, grant microphone access if prompted, then use the global push-to-talk shortcut.
+On its first run, Lucid opens the setup window while it downloads `ggml-small-q5_1.bin`. Keep the app open until the download completes, grant microphone access if prompted, then use the global push-to-talk shortcut.
 
 ## Commands
 
@@ -55,8 +55,8 @@ pnpm format     # Format supported source files
 
 The Whisper model is searched for in the following order:
 
-1. `models/ggml-small.en.bin`
-2. `src-tauri/models/ggml-small.en.bin`
+1. `models/ggml-small-q5_1.bin`
+2. `src-tauri/models/gggml-small-q5_1.bin`
 3. The app-data `models` directory
 
 If it is not found, Lucid downloads the English Whisper small model from the `ggerganov/whisper.cpp` Hugging Face repository.

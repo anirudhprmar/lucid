@@ -48,7 +48,7 @@ pub async fn download_model(app: tauri::AppHandle, url: &str, dest: &Path) -> Re
 }
 
 pub async fn resolve_model_path(app: tauri::AppHandle) -> Result<PathBuf, String> {
-    const MODEL_NAME: &str = "ggml-small.en.bin";
+    const MODEL_NAME: &str = "ggml-small-q5_1.bin";
 
     if let Some(path) = find_existing_model(&app, MODEL_NAME) {
         return Ok(path);
@@ -60,7 +60,7 @@ pub async fn resolve_model_path(app: tauri::AppHandle) -> Result<PathBuf, String
     }
 
     const MODEL_URL: &str =
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin";
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin";
 
     let dir = app
         .path()
