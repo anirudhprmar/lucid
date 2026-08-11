@@ -1,4 +1,4 @@
-import CheckForUpdates from './updates';
+import CheckForUpdates from '../components/updates';
 
 export default function AppSettings() {
   return (

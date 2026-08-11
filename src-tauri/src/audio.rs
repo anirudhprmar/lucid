@@ -25,7 +25,7 @@ impl Default for AudioRecorderState {
     }
 }
 
-pub fn to_mono(interleaved: &[f32], channels: u16) -> Vec<f32> {
+fn to_mono(interleaved: &[f32], channels: u16) -> Vec<f32> {
     if channels <= 1 {
         return interleaved.to_vec();
     }
@@ -36,7 +36,7 @@ pub fn to_mono(interleaved: &[f32], channels: u16) -> Vec<f32> {
         .collect()
 }
 
-pub fn resample_to_16k(mono_samples: &[f32], src_rate: u32) -> Vec<f32> {
+fn resample_to_16k(mono_samples: &[f32], src_rate: u32) -> Vec<f32> {
     if src_rate == 16000 || mono_samples.is_empty() {
         return mono_samples.to_vec();
     }
