@@ -16,25 +16,9 @@ export default function Titlebar() {
   return (
     <div
       data-tauri-drag-region={true}
-      className='flex h-11 shrink-0 items-center justify-between border-b border-white/8 bg-[#0b0b0d] px-4 select-none'
+      className='flex h-11 shrink-0 items-center justify-between bg-[#0b0b0d] px-4 select-none'
     >
       <div className='flex items-center gap-2' data-tauri-drag-region>
-        <svg
-          viewBox='0 0 24 24'
-          fill='none'
-          stroke='currentColor'
-          strokeWidth='2'
-          className='size-4 text-white/60'
-          aria-hidden='true'
-        >
-          <path
-            strokeLinecap='round'
-            strokeLinejoin='round'
-            d='M12 3v12m0 0 4-4m-4 4-4-4M5 17v2.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V17'
-          />
-        </svg>
-        <span className='text-sm font-medium text-white/50'>Lucid</span>
-        <span className='text-white/20'>/</span>
         <span className='text-sm font-semibold text-white'>{currentTitle}</span>
       </div>
 

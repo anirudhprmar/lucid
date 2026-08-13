@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router';
 import { motion } from 'motion/react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import { PanelLeftCloseIcon, PanelLeftIcon } from '@hugeicons/core-free-icons';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: DashboardIcon },
@@ -21,22 +23,44 @@ export default function Sidebar() {
       <button
         type='button'
         onClick={() => setCollapsed(!collapsed)}
-        className='flex h-11 shrink-0 items-center justify-center border-b border-white/8 text-white/50 transition hover:text-white'
+        className='relative z-50 flex h-16 shrink-0 items-center justify-start gap-3 overflow-hidden border-b border-white/8 px-5 text-white/50 transition hover:text-white'
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
+        {!collapsed && (
+          <img
+            src='/bg.jpg'
+            alt='gradient-bg'
+            className='absolute inset-0 h-full w-full mask-x-from-95% object-cover opacity-50'
+          />
+        )}
+
         <motion.svg
           viewBox='0 0 20 20'
           fill='currentColor'
-          className='size-4'
+          className='size-5'
           animate={{ rotate: collapsed ? 180 : 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         >
-          <path
-            fillRule='evenodd'
-            d='M12.79 5.23a.75.75 0 010 1.06L9.06 10l3.73 3.71a.75.75 0 11-1.06 1.06l-4.25-4.24a.75.75 0 010-1.06l4.25-4.24a.75.75 0 011.06 0z'
-            clipRule='evenodd'
-          />
+          {!collapsed ? (
+            <HugeiconsIcon
+              icon={PanelLeftCloseIcon}
+              size={20}
+              color='#ffffff'
+              strokeWidth={1.8}
+            />
+          ) : (
+            <HugeiconsIcon
+              icon={PanelLeftIcon}
+              size={20}
+              color='#ffffff'
+              strokeWidth={1.8}
+            />
+          )}
         </motion.svg>
+
+        {!collapsed && (
+          <p className='z-50 text-sm font-medium text-white/90'>Lucid</p>
+        )}
       </button>
 
       <nav className='flex flex-1 flex-col gap-1 p-2'>
