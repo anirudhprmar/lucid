@@ -21,7 +21,9 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+*.sw
+
+.agents
 
 *.bin
 src-tauri/models/*

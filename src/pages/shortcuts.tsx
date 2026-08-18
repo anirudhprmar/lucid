@@ -1,13 +1,6 @@
 export default function Shortcuts() {
   return (
     <div className='flex flex-1 flex-col gap-6 p-6'>
-      <div>
-        <h1 className='text-2xl font-semibold text-white'>Shortcuts</h1>
-        <p className='mt-1 text-sm text-zinc-400'>
-          Configure your global keyboard shortcuts.
-        </p>
-      </div>
-
       <div className='rounded-2xl border border-white/10 bg-white/[0.02] p-5'>
         <div className='flex items-center justify-between'>
           <div>

@@ -24,13 +24,6 @@ export default function ModelManagement() {
 
   return (
     <div className='flex flex-1 flex-col gap-6 p-6'>
-      <div>
-        <h1 className='text-2xl font-semibold text-white'>Models</h1>
-        <p className='mt-1 text-sm text-zinc-400'>
-          Manage your Whisper transcription models.
-        </p>
-      </div>
-
       {modelReady === null ? (
         <div className='flex items-center justify-center py-12 text-sm text-zinc-500'>
           Checking model status...
