@@ -9,6 +9,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_store::StoreExt;
 use transcriber::WhisperTranscriber;
 
 #[tauri::command]
@@ -17,12 +18,18 @@ fn check_model_exists(app: tauri::AppHandle) -> bool {
     model::find_existing_model(&app, MODEL_NAME).is_some()
 }
 
+#[tauri::command]
+fn get_current_model(app: tauri::AppHandle) -> Option<String> {
+    model::find_existing_model(&app, "ggml-small-q5_1.bin").map(|p| p.display().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -104,6 +111,8 @@ pub fn run() {
             let main = app.get_webview_window("main").unwrap();
             main.hide()?;
 
+            app.store("usage.json")?;
+
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit, &settings_item])?;
@@ -153,7 +162,10 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![check_model_exists])
+        .invoke_handler(tauri::generate_handler![
+            check_model_exists,
+            get_current_model
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

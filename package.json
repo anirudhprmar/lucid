@@ -19,9 +19,12 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-store": "^2.4.4",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "motion": "^12.43.0",
+    "path-browserify": "^1.0.1",
     "react": "^19.1.0",
+    "react-activity-calendar": "^3.2.1",
     "react-dom": "^19.1.0",
     "react-router": "^8.3.0",
     "tailwindcss": "^4.3.3"
@@ -29,6 +32,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2",
+    "@types/node": "^26.2.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@typescript-eslint/parser": "^8.65.0",

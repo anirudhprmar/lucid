@@ -34,9 +34,7 @@ export default function Sidebar() {
           />
         )}
 
-        <motion.svg
-          viewBox='0 0 20 20'
-          fill='currentColor'
+        <motion.div
           className='size-5'
           animate={{ rotate: collapsed ? 180 : 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 25 }}
@@ -56,7 +54,7 @@ export default function Sidebar() {
               strokeWidth={1.8}
             />
           )}
-        </motion.svg>
+        </motion.div>
 
         {!collapsed && (
           <p className='z-50 text-sm font-medium text-white/90'>Lucid</p>
