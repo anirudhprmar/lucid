@@ -1,6 +1,7 @@
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 
 type UpdateStatus =
   | 'idle'
@@ -10,8 +11,6 @@ type UpdateStatus =
   | 'downloading'
   | 'ready'
   | 'error';
-
-const APP_VERSION = '0.1.0';
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error
@@ -25,6 +24,11 @@ export default function CheckForUpdates() {
   const [downloadedBytes, setDownloadedBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    getVersion().then(setAppVersion);
+  }, []);
 
   const checkForUpdates = async () => {
     setStatus('checking');
@@ -36,7 +40,13 @@ export default function CheckForUpdates() {
       setUpdate(availableUpdate);
       setStatus(availableUpdate ? 'available' : 'up-to-date');
     } catch (error) {
-      setError(getErrorMessage(error));
+      const msg = getErrorMessage(error);
+      const isDevMode =
+        msg.toLowerCase().includes('not allowed') ||
+        msg.toLowerCase().includes('dev');
+      setError(
+        isDevMode ? 'Update checks are disabled in development builds.' : msg
+      );
       setStatus('error');
     }
   };
@@ -61,7 +71,13 @@ export default function CheckForUpdates() {
       });
       setStatus('ready');
     } catch (error) {
-      setError(getErrorMessage(error));
+      const msg = getErrorMessage(error);
+      const isDevMode =
+        msg.toLowerCase().includes('not allowed') ||
+        msg.toLowerCase().includes('dev');
+      setError(
+        isDevMode ? 'Update checks are disabled in development builds.' : msg
+      );
       setStatus('error');
     }
   };
@@ -105,7 +121,7 @@ export default function CheckForUpdates() {
               Software updates
             </h2>
             <span className='rounded-full bg-white/8 px-2 py-0.5 text-xs font-medium text-zinc-400'>
-              v{APP_VERSION}
+              v{appVersion}
             </span>
           </div>
           <p className='mt-1 text-sm leading-6 text-zinc-400'>
