@@ -1,10 +1,9 @@
 ## Todo
 
 v0.1.1
-- [ ]- Model size picker (for users with low gpu: list of whispr models (add / delete easily))
+- [X]- Model size picker (for users with low gpu: list of whispr models (add / delete easily))
 - [ ]- shortcuts
 - [ ]- start on startup
-- [ ]- add motions to the pill 
 - [ ]- streaming on transcription
 - [ ]- tap to start (hold the key combo once and speak until silence)
 - [ ]- improve onboarding ( add necessary screens)

@@ -12,7 +12,12 @@ pub fn find_existing_model(app: &tauri::AppHandle, name: &str) -> Option<PathBuf
     candidates.into_iter().find(|p| p.exists())
 }
 
-pub async fn download_model(app: tauri::AppHandle, url: &str, dest: &Path) -> Result<(), String> {
+pub async fn download_model(
+    app: tauri::AppHandle,
+    url: &str,
+    dest: &Path,
+    model_name: &str,
+) -> Result<(), String> {
     let tmp_dest = dest.with_extension("part");
     let response = reqwest::get(url).await.map_err(|e| e.to_string())?;
     let total_size = response.content_length().unwrap_or(0);
@@ -28,7 +33,8 @@ pub async fn download_model(app: tauri::AppHandle, url: &str, dest: &Path) -> Re
         downloaded += chunk.len() as u64;
         if total_size > 0 {
             let percent = (downloaded as f64 / total_size as f64 * 100.0) as u32;
-            app.emit_to("main", "model-download-progress", percent).ok();
+            let progress_event = format!("model-download-progress-{}", model_name);
+            app.emit_to("main", &progress_event, percent).ok();
         }
     }
 
@@ -43,14 +49,15 @@ pub async fn download_model(app: tauri::AppHandle, url: &str, dest: &Path) -> Re
         .await
         .map_err(|e| e.to_string())?;
 
-    app.emit_to("main", "model-download-complete", ()).ok();
+    let complete_event = format!("model-download-complete-{}", model_name);
+    app.emit_to("main", &complete_event, ()).ok();
     Ok(())
 }
 
-pub async fn resolve_model_path(app: tauri::AppHandle) -> Result<PathBuf, String> {
-    const MODEL_NAME: &str = "ggml-small-q5_1.bin";
+pub async fn resolve_model_path(app: tauri::AppHandle, model: &str) -> Result<PathBuf, String> {
+    let model_name = model;
 
-    if let Some(path) = find_existing_model(&app, MODEL_NAME) {
+    if let Some(path) = find_existing_model(&app, model_name) {
         return Ok(path);
     }
 
@@ -59,8 +66,10 @@ pub async fn resolve_model_path(app: tauri::AppHandle) -> Result<PathBuf, String
         main.set_focus().ok();
     }
 
-    const MODEL_URL: &str =
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin";
+    let model_url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+        model_name
+    );
 
     let dir = app
         .path()
@@ -70,11 +79,93 @@ pub async fn resolve_model_path(app: tauri::AppHandle) -> Result<PathBuf, String
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| e.to_string())?;
-    let dest = dir.join(MODEL_NAME);
+    let dest = dir.join(model_name);
 
     if !dest.exists() {
-        download_model(app.clone(), MODEL_URL, &dest).await?;
+        download_model(app.clone(), &model_url, &dest, model_name).await?;
     }
 
     Ok(dest)
+}
+
+pub fn list_downloaded_models(app: &tauri::AppHandle) -> Vec<String> {
+    let mut result = Vec::new();
+    let candidates = [
+        PathBuf::from("models"),
+        PathBuf::from("src-tauri/models"),
+        app.path()
+            .app_data_dir()
+            .ok()
+            .unwrap_or_default()
+            .join("models"),
+    ];
+
+    for dir in candidates {
+        if dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let file_name = entry.file_name().to_string_lossy().into_owned();
+                    if file_name.ends_with(".bin") && !result.contains(&file_name) {
+                        result.push(file_name);
+                    }
+                }
+            }
+        }
+    }
+
+    result
+}
+
+pub async fn download_named_model(app: tauri::AppHandle, name: &str) -> Result<(), String> {
+    let filename = match name {
+        "tiny" => "ggml-tiny.en.bin".to_string(),
+        "base.en" => "ggml-base.en.bin".to_string(),
+        "small-q5_1" => "ggml-small-q5_1.bin".to_string(),
+        "small.en" => "ggml-small.en.bin".to_string(),
+        _ => return Err("unknown model".to_string()),
+    };
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("models");
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    let dest = dir.join(&filename);
+    let url = format!(
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+        filename
+    );
+    if !dest.exists() {
+        download_model(app, &url, &dest, name).await?;
+    }
+    Ok(())
+}
+
+pub async fn delete_model(app: tauri::AppHandle, name: &str) -> Result<(), String> {
+    let filename = match name {
+        "tiny" => "ggml-tiny.en.bin".to_string(),
+        "base.en" => "ggml-base.en.bin".to_string(),
+        "small-q5_1" => "ggml-small-q5_1.bin".to_string(),
+        "small.en" => "ggml-small.en.bin".to_string(),
+        _ => return Err("unknown model".to_string()),
+    };
+
+    let existing_dir_path = app
+        .path()
+        .app_data_dir()
+        .expect("failed to resolve data dir");
+    let full_path = existing_dir_path.join("models");
+    let dest = full_path.join(filename);
+
+    if !dest.exists() {
+        return Ok(());
+    }
+
+    tokio::fs::remove_file(&dest)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

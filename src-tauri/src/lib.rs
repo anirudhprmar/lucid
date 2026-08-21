@@ -23,6 +23,21 @@ fn get_current_model(app: tauri::AppHandle) -> Option<String> {
     model::find_existing_model(&app, "ggml-small-q5_1.bin").map(|p| p.display().to_string())
 }
 
+#[tauri::command]
+fn list_downloaded_models(app: tauri::AppHandle) -> Vec<String> {
+    model::list_downloaded_models(&app)
+}
+
+#[tauri::command]
+async fn download_named_model(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    model::download_named_model(app, &name).await
+}
+
+#[tauri::command]
+async fn delete_model(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    model::delete_model(app, &name).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -134,7 +149,7 @@ pub fn run() {
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                match model::resolve_model_path(handle.clone()).await {
+                match model::resolve_model_path(handle.clone(), "ggml-small-q5_1.bin").await {
                     Ok(model_path) => match WhisperTranscriber::new(&model_path) {
                         Ok(transcriber) => {
                             println!("Successfully loaded Whisper model from: {:?}", model_path);
@@ -164,7 +179,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             check_model_exists,
-            get_current_model
+            get_current_model,
+            list_downloaded_models,
+            download_named_model,
+            delete_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
