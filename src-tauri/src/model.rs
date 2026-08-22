@@ -1,6 +1,7 @@
 use futures_util::StreamExt;
 use std::path::{Path, PathBuf};
 use tauri::{Emitter, Manager};
+use tauri_plugin_store::StoreExt;
 use tokio::io::AsyncWriteExt;
 
 pub fn find_existing_model(app: &tauri::AppHandle, name: &str) -> Option<PathBuf> {
@@ -116,14 +117,20 @@ pub fn list_downloaded_models(app: &tauri::AppHandle) -> Vec<String> {
     result
 }
 
+pub fn model_name_to_filename(name: &str) -> Option<&'static str> {
+    match name {
+        "tiny" => Some("ggml-tiny.en.bin"),
+        "base.en" => Some("ggml-base.en.bin"),
+        "small-q5_1" => Some("ggml-small-q5_1.bin"),
+        "small.en" => Some("ggml-small.en.bin"),
+        _ => None,
+    }
+}
+
 pub async fn download_named_model(app: tauri::AppHandle, name: &str) -> Result<(), String> {
-    let filename = match name {
-        "tiny" => "ggml-tiny.en.bin".to_string(),
-        "base.en" => "ggml-base.en.bin".to_string(),
-        "small-q5_1" => "ggml-small-q5_1.bin".to_string(),
-        "small.en" => "ggml-small.en.bin".to_string(),
-        _ => return Err("unknown model".to_string()),
-    };
+    let filename =
+        model_name_to_filename(name).ok_or_else(|| format!("unknown model: {}", name))?;
+
     let dir = app
         .path()
         .app_data_dir()
@@ -132,7 +139,7 @@ pub async fn download_named_model(app: tauri::AppHandle, name: &str) -> Result<(
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| e.to_string())?;
-    let dest = dir.join(&filename);
+    let dest = dir.join(filename);
     let url = format!(
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
         filename
@@ -144,13 +151,8 @@ pub async fn download_named_model(app: tauri::AppHandle, name: &str) -> Result<(
 }
 
 pub async fn delete_model(app: tauri::AppHandle, name: &str) -> Result<(), String> {
-    let filename = match name {
-        "tiny" => "ggml-tiny.en.bin".to_string(),
-        "base.en" => "ggml-base.en.bin".to_string(),
-        "small-q5_1" => "ggml-small-q5_1.bin".to_string(),
-        "small.en" => "ggml-small.en.bin".to_string(),
-        _ => return Err("unknown model".to_string()),
-    };
+    let filename =
+        model_name_to_filename(name).ok_or_else(|| format!("unknown model: {}", name))?;
 
     let existing_dir_path = app
         .path()
@@ -167,5 +169,48 @@ pub async fn delete_model(app: tauri::AppHandle, name: &str) -> Result<(), Strin
         .await
         .map_err(|e| e.to_string())?;
 
+    Ok(())
+}
+
+pub async fn switch_model(app: tauri::AppHandle, name: &str) -> Result<(), String> {
+    let filename =
+        model_name_to_filename(name).ok_or_else(|| format!("unknown model: {}", name))?;
+
+    let model_path = find_existing_model(&app, filename).ok_or_else(|| {
+        format!(
+            "Model file {} not found on disk. Please download it first.",
+            filename
+        )
+    })?;
+
+    let new_transcriber = crate::transcriber::WhisperTranscriber::new(&model_path)
+        .map_err(|e| format!("Failed to load Whisper model: {}", e))?;
+
+    let state = app
+        .try_state::<crate::TranscriberState>()
+        .ok_or_else(|| "TranscriberState is not initialized".to_string())?;
+
+    {
+        let mut trans_lock = state
+            .transcriber
+            .write()
+            .map_err(|_| "Failed to lock transcriber write handle".to_string())?;
+        *trans_lock = Some(new_transcriber);
+
+        let mut path_lock = state
+            .current_model_path
+            .write()
+            .map_err(|_| "Failed to lock model path write handle".to_string())?;
+        *path_lock = Some(model_path.display().to_string());
+    }
+
+    if let Ok(store) = app.store("settings.json") {
+        store.set("active_model", serde_json::json!(name));
+    }
+
+    println!(
+        "Successfully switched active Whisper model to: {:?}",
+        model_path
+    );
     Ok(())
 }

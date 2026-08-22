@@ -8,6 +8,7 @@ interface ModelCard {
   description: string;
   status: 'not-downloaded' | 'downloading' | 'downloaded' | 'deleting';
   isActive: boolean;
+  isSwitching?: boolean;
   progress?: number;
   onDownload: (name: string) => void;
   onSwitch?: (name: string) => void;
@@ -19,6 +20,7 @@ export default function ModelManagement() {
   const [active, setActive] = useState<string | null>(null);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [switching, setSwitching] = useState<Set<string>>(new Set());
 
   const models = [
     {
@@ -115,6 +117,23 @@ export default function ModelManagement() {
     }
   };
 
+  const handleSwitch = async (name: string) => {
+    setSwitching((prev) => new Set(prev).add(name));
+    try {
+      await invoke('switch_active_model', { name });
+      const current = await invoke<string | null>('get_current_model');
+      setActive(current || null);
+    } catch (error) {
+      console.error('Failed to switch model:', error);
+    } finally {
+      setSwitching((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+    }
+  };
+
   const getStatus = (modelName: string, filename: string) => {
     if (deleting.has(modelName)) return 'deleting';
     if (downloaded.includes(filename)) return 'downloaded';
@@ -137,10 +156,12 @@ export default function ModelManagement() {
             size={model.size}
             description={model.description}
             isActive={checkIsActive(model.filename)}
+            isSwitching={switching.has(model.name)}
             status={getStatus(model.name, model.filename)}
             progress={progress[model.name]}
             onDownload={handleDownload}
             onDelete={handleDelete}
+            onSwitch={handleSwitch}
           />
         ))}
       </div>
@@ -153,10 +174,12 @@ function ModelCard({
   size,
   description,
   isActive = false,
+  isSwitching = false,
   status,
   progress,
   onDownload,
   onDelete,
+  onSwitch,
 }: ModelCard) {
   return (
     <div
@@ -215,24 +238,28 @@ function ModelCard({
 
         {status === 'downloaded' && (
           <div className='flex items-center gap-2'>
-            {isActive ? (
+            {!isActive && onSwitch && (
               <button
                 type='button'
-                onClick={() => onDelete(name)}
-                title='Will be removed on next restart'
-                className='rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20'
+                onClick={() => onSwitch(name)}
+                disabled={isSwitching}
+                className='rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-white/90 transition hover:bg-white/10 disabled:opacity-50'
               >
-                Delete (Restart req.)
-              </button>
-            ) : (
-              <button
-                type='button'
-                onClick={() => onDelete(name)}
-                className='rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-rose-400/80 transition hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300'
-              >
-                Delete
+                {isSwitching ? 'Switching...' : 'Switch'}
               </button>
             )}
+            <button
+              type='button'
+              onClick={() => onDelete(name)}
+              title={isActive ? 'Will be removed on next restart' : undefined}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                isActive
+                  ? 'border border-rose-500/20 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+                  : 'border border-white/10 text-rose-400/80 hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300'
+              }`}
+            >
+              Delete
+            </button>
           </div>
         )}
 

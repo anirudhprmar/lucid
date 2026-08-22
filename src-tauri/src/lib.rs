@@ -4,13 +4,19 @@ mod paste;
 mod transcriber;
 
 use audio::AudioRecorderState;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_store::StoreExt;
 use transcriber::WhisperTranscriber;
+
+#[derive(Clone, Default)]
+pub struct TranscriberState {
+    pub transcriber: Arc<RwLock<Option<WhisperTranscriber>>>,
+    pub current_model_path: Arc<RwLock<Option<String>>>,
+}
 
 #[tauri::command]
 fn check_model_exists(app: tauri::AppHandle) -> bool {
@@ -20,7 +26,12 @@ fn check_model_exists(app: tauri::AppHandle) -> bool {
 
 #[tauri::command]
 fn get_current_model(app: tauri::AppHandle) -> Option<String> {
-    model::find_existing_model(&app, "ggml-small-q5_1.bin").map(|p| p.display().to_string())
+    if let Some(state) = app.try_state::<TranscriberState>() {
+        if let Ok(lock) = state.current_model_path.read() {
+            return lock.clone();
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -36,6 +47,11 @@ async fn download_named_model(app: tauri::AppHandle, name: String) -> Result<(),
 #[tauri::command]
 async fn delete_model(app: tauri::AppHandle, name: String) -> Result<(), String> {
     model::delete_model(app, &name).await
+}
+
+#[tauri::command]
+async fn switch_active_model(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    model::switch_model(app, &name).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -75,17 +91,29 @@ pub fn run() {
                                 eprintln!("Failed to emit notch state transcribing: {}", e);
                             }
 
-                            let state = app.try_state::<Arc<WhisperTranscriber>>();
+                            let state = app.try_state::<TranscriberState>();
                             if state.is_none() {
                                 app.emit("notch-state", "not-ready").ok();
                                 return;
                             }
 
-                            if let Some(transcriber) = app.try_state::<Arc<WhisperTranscriber>>() {
-                                let transcriber = transcriber.inner().clone();
+                            if let Some(trans_state) = app.try_state::<TranscriberState>() {
+                                let trans_state = trans_state.inner().clone();
                                 let app_handle = app.clone();
                                 std::thread::spawn(move || {
-                                    match transcriber.transcribe(&pcm_data) {
+                                    let transcribe_result = {
+                                        if let Ok(lock) = trans_state.transcriber.read() {
+                                            if let Some(ref transcriber) = *lock {
+                                                transcriber.transcribe(&pcm_data)
+                                            } else {
+                                                Err("Transcriber model is not loaded".into())
+                                            }
+                                        } else {
+                                            Err("Failed to acquire transcriber read lock".into())
+                                        }
+                                    };
+
+                                    match transcribe_result {
                                         Ok(text) => {
                                             if !text.is_empty() {
                                                 if let Err(e) = paste::paste_text(&text) {
@@ -101,7 +129,7 @@ pub fn run() {
                                     }
                                 });
                             } else {
-                                eprintln!("WhisperTranscriber state is not available.");
+                                eprintln!("TranscriberState is not available.");
                                 if let Err(e) = app.emit("notch-state", "idle") {
                                     eprintln!("Failed to emit notch state idle: {}", e);
                                 }
@@ -112,6 +140,7 @@ pub fn run() {
                 .build(),
         )
         .manage(Mutex::new(AudioRecorderState::default()))
+        .manage(TranscriberState::default())
         .setup(|app| {
             let notch = app.get_webview_window("notch").unwrap();
             let monitor = notch.current_monitor()?.unwrap();
@@ -127,6 +156,7 @@ pub fn run() {
             main.hide()?;
 
             app.store("usage.json")?;
+            app.store("settings.json")?;
 
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
@@ -149,11 +179,32 @@ pub fn run() {
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                match model::resolve_model_path(handle.clone(), "ggml-small-q5_1.bin").await {
+                let saved_model = {
+                    if let Ok(store) = handle.store("settings.json") {
+                        store
+                            .get("active_model")
+                            .and_then(|v| v.as_str().map(|s| s.to_string()))
+                    } else {
+                        None
+                    }
+                };
+
+                let active_name = saved_model.as_deref().unwrap_or("small-q5_1");
+                let filename =
+                    model::model_name_to_filename(active_name).unwrap_or("ggml-small-q5_1.bin");
+
+                match model::resolve_model_path(handle.clone(), filename).await {
                     Ok(model_path) => match WhisperTranscriber::new(&model_path) {
                         Ok(transcriber) => {
                             println!("Successfully loaded Whisper model from: {:?}", model_path);
-                            handle.manage(Arc::new(transcriber));
+                            if let Some(state) = handle.try_state::<TranscriberState>() {
+                                if let Ok(mut lock) = state.transcriber.write() {
+                                    *lock = Some(transcriber);
+                                }
+                                if let Ok(mut path_lock) = state.current_model_path.write() {
+                                    *path_lock = Some(model_path.display().to_string());
+                                }
+                            }
                         }
                         Err(e) => {
                             eprintln!("Failed to initialize Whisper model: {}", e);
@@ -182,7 +233,8 @@ pub fn run() {
             get_current_model,
             list_downloaded_models,
             download_named_model,
-            delete_model
+            delete_model,
+            switch_active_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
