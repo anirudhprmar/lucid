@@ -59,6 +59,12 @@
       "eslint --fix",
       "prettier --write"
     ],
+    "src/**/*.css": [
+      "prettier --write"
+    ],
+    "*.{json,md,html}": [
+      "prettier --write"
+    ],
     "src-tauri/**/*.rs": [
       "rustfmt --edition 2021"
     ]

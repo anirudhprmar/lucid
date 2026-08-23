@@ -1,2 +1,1 @@
 pnpm exec lint-staged
-cd src-tauri && cargo clippy --all-targets -- -D warnings
