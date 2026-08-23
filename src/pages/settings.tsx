@@ -1,9 +1,11 @@
-import CheckForUpdates from '../components/updates';
+import Autostart from '@/components/autostart';
+import CheckForUpdates from '@/components/updates';
 
 export default function Settings() {
   return (
     <div className='flex flex-1 flex-col gap-6 p-6'>
       <CheckForUpdates />
+      <Autostart />
     </div>
   );
 }

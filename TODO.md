@@ -2,7 +2,7 @@
 
 v0.1.1
 
-- [ ]- start on startup
+- [X]- start on startup
 - [ ]- shortcuts
 - [ ]- streaming on transcription
 - [ ]- tap to start (hold the key combo once and speak until silence)
