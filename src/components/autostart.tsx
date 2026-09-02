@@ -21,7 +21,7 @@ export default function Autostart() {
   };
 
   return (
-    <div className='bg-primary-foreground flex items-center justify-between rounded-xl border border-gray-50/10 p-4'>
+    <div className='bg-primary-foreground/90 flex items-center justify-between rounded-xl border border-gray-50/10 p-4'>
       <div>
         <h3 className='text-foreground text-sm font-medium'>
           Start on Startup

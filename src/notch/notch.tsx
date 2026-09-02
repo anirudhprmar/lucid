@@ -1,27 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import Waveform from './waveform';
-import Spinner from './spinner';
+import FloatingPill from './floating-pill';
 import { motion } from 'motion/react';
-import { LazyStore } from '@tauri-apps/plugin-store';
-
-const d = new Date();
-
-const store = new LazyStore('usage.json');
-
-type storeDate = {
-  count: number;
-  duration: number;
-};
+import { useEffect, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
 
 type NotchState = 'idle' | 'listening' | 'transcribing' | 'not-ready';
 
 export default function Notch() {
   const [state, setState] = useState<NotchState>('idle');
-  const startTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
-    console.log('Notch mounted and listening for notch-state events');
     const unlisten = listen<NotchState>('notch-state', (e) => {
       setState(e.payload);
     });
@@ -30,68 +17,24 @@ export default function Notch() {
     };
   }, []);
 
-  useEffect(() => {
-    async function updateStore() {
-      const key = d.toISOString().split('T')[0];
-      let data = await store.get<storeDate>(key);
-
-      if (!data) {
-        data = { count: 0, duration: 0 };
-        // We save immediately if it's new so we have a base entry
-        await store.set(key, data);
-        await store.save();
-      }
-
-      if (state === 'listening') {
-        // Start the timer
-        startTimeRef.current = Date.now();
-      } else if (startTimeRef.current !== null) {
-        // We stopped listening, so calculate duration
-        const duration = Date.now() - startTimeRef.current;
-        data.duration += duration;
-        data.count += 1;
-
-        await store.set(key, data);
-        await store.save();
-
-        // Reset timer
-        startTimeRef.current = null;
-      }
-    }
-
-    void updateStore();
-  }, [state]);
-
-  const dockVariants = {
-    visible: {
-      opacity: 1,
-      scale: 1,
-      transition: {
-        when: 'afterChildren',
-      },
-    },
-    hidden: {
-      opacity: 0,
-      scale: 0,
-      transition: {
-        when: 'beforeChildren',
-      },
-    },
-  };
+  const isActive = state !== 'idle';
 
   return (
-    <div className='flex h-screen items-center justify-center'>
+    <div className='flex h-full w-full justify-center'>
       <motion.div
-        className={`flex h-9 w-10 items-center justify-center rounded-lg bg-black/85`}
-        initial={state === 'idle' ? 'hidden' : 'visible'}
-        animate={state === 'idle' ? 'hidden' : 'visible'}
-        variants={dockVariants}
+        className='flex items-center justify-center overflow-hidden rounded-b-2xl bg-black'
+        initial={{ y: -50, width: 120, height: 40 }}
+        animate={{
+          y: 0,
+          width: isActive ? 200 : 120,
+          height: 40,
+        }}
+        transition={{
+          y: { type: 'spring', stiffness: 300, damping: 24 },
+          width: { type: 'spring', stiffness: 400, damping: 28 },
+        }}
       >
-        {state === 'listening' && <Waveform />}
-        {state === 'transcribing' && <Spinner />}
-        {state === 'not-ready' && (
-          <div className='text-sm text-white'>Model not ready yet</div>
-        )}
+        <FloatingPill />
       </motion.div>
     </div>
   );

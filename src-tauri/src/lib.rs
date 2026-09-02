@@ -67,75 +67,99 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    let audio_state = app.state::<Mutex<AudioRecorderState>>();
-                    let mut recorder = audio_state.lock().unwrap();
+                .with_handler(|app, shortcut, event| {
+                    let ptt_shortcut: tauri_plugin_global_shortcut::Shortcut =
+                        "CmdOrCtrl+Alt+Space".parse().unwrap();
+                    let notch_toggle_shortcut: tauri_plugin_global_shortcut::Shortcut =
+                        "CmdOrCtrl+Alt+N".parse().unwrap();
 
-                    match event.state() {
-                        ShortcutState::Pressed => {
-                            if let Err(e) = app.emit("notch-state", "listening") {
-                                eprintln!("Failed to emit notch state listening: {}", e);
-                            }
+                    if *shortcut == ptt_shortcut {
+                        // --- Push-to-Talk handler ---
+                        let audio_state = app.state::<Mutex<AudioRecorderState>>();
+                        let mut recorder = audio_state.lock().unwrap();
 
-                            if let Err(e) = recorder.start_recording() {
-                                eprintln!("Failed to start recording: {}", e);
-                            }
-                        }
-                        ShortcutState::Released => {
-                            let pcm_data = recorder.stop_recording_and_extract_pcm16k();
-                            if pcm_data.is_empty() {
-                                println!("No audio recorded.");
-                                if let Err(e) = app.emit("notch-state", "idle") {
-                                    eprintln!("Failed to emit notch state idle: {}", e);
+                        match event.state() {
+                            ShortcutState::Pressed => {
+                                if let Err(e) = app.emit("notch-state", "listening") {
+                                    eprintln!("Failed to emit notch state listening: {}", e);
                                 }
-                                return;
+
+                                if let Err(e) = recorder.start_recording() {
+                                    eprintln!("Failed to start recording: {}", e);
+                                }
                             }
-
-                            if let Err(e) = app.emit("notch-state", "transcribing") {
-                                eprintln!("Failed to emit notch state transcribing: {}", e);
-                            }
-
-                            let state = app.try_state::<TranscriberState>();
-                            if state.is_none() {
-                                app.emit("notch-state", "not-ready").ok();
-                                return;
-                            }
-
-                            if let Some(trans_state) = app.try_state::<TranscriberState>() {
-                                let trans_state = trans_state.inner().clone();
-                                let app_handle = app.clone();
-                                std::thread::spawn(move || {
-                                    let transcribe_result = {
-                                        if let Ok(lock) = trans_state.transcriber.read() {
-                                            if let Some(ref transcriber) = *lock {
-                                                transcriber.transcribe(&pcm_data)
-                                            } else {
-                                                Err("Transcriber model is not loaded".into())
-                                            }
-                                        } else {
-                                            Err("Failed to acquire transcriber read lock".into())
-                                        }
-                                    };
-
-                                    match transcribe_result {
-                                        Ok(text) => {
-                                            if !text.is_empty() {
-                                                if let Err(e) = paste::paste_text(&text) {
-                                                    eprintln!("Failed to paste: {}", e);
-                                                }
-                                            }
-                                        }
-                                        Err(e) => eprintln!("Transcription error: {}", e),
-                                    }
-
-                                    if let Err(e) = app_handle.emit("notch-state", "idle") {
+                            ShortcutState::Released => {
+                                let pcm_data = recorder.stop_recording_and_extract_pcm16k();
+                                if pcm_data.is_empty() {
+                                    println!("No audio recorded.");
+                                    if let Err(e) = app.emit("notch-state", "idle") {
                                         eprintln!("Failed to emit notch state idle: {}", e);
                                     }
-                                });
-                            } else {
-                                eprintln!("TranscriberState is not available.");
-                                if let Err(e) = app.emit("notch-state", "idle") {
-                                    eprintln!("Failed to emit notch state idle: {}", e);
+                                    return;
+                                }
+
+                                if let Err(e) = app.emit("notch-state", "transcribing") {
+                                    eprintln!("Failed to emit notch state transcribing: {}", e);
+                                }
+
+                                let state = app.try_state::<TranscriberState>();
+                                if state.is_none() {
+                                    app.emit("notch-state", "not-ready").ok();
+                                    return;
+                                }
+
+                                if let Some(trans_state) = app.try_state::<TranscriberState>() {
+                                    let trans_state = trans_state.inner().clone();
+                                    let app_handle = app.clone();
+                                    std::thread::spawn(move || {
+                                        let transcribe_result = {
+                                            if let Ok(lock) = trans_state.transcriber.read() {
+                                                if let Some(ref transcriber) = *lock {
+                                                    transcriber.transcribe(&pcm_data)
+                                                } else {
+                                                    Err("Transcriber model is not loaded".into())
+                                                }
+                                            } else {
+                                                Err("Failed to acquire transcriber read lock"
+                                                    .into())
+                                            }
+                                        };
+
+                                        match transcribe_result {
+                                            Ok(text) => {
+                                                if !text.is_empty() {
+                                                    if let Err(e) = paste::paste_text(&text) {
+                                                        eprintln!("Failed to paste: {}", e);
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => eprintln!("Transcription error: {}", e),
+                                        }
+
+                                        if let Err(e) = app_handle.emit("notch-state", "idle") {
+                                            eprintln!("Failed to emit notch state idle: {}", e);
+                                        }
+                                    });
+                                } else {
+                                    eprintln!("TranscriberState is not available.");
+                                    if let Err(e) = app.emit("notch-state", "idle") {
+                                        eprintln!("Failed to emit notch state idle: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                    } else if *shortcut == notch_toggle_shortcut {
+                        if event.state() == ShortcutState::Pressed {
+                            if let Some(notch) = app.get_webview_window("notch") {
+                                let is_visible = notch.is_visible().unwrap_or(true);
+                                if is_visible {
+                                    notch.hide().ok();
+                                } else {
+                                    notch.show().ok();
+                                }
+
+                                if let Ok(store) = app.store("settings.json") {
+                                    store.set("notch_visible", serde_json::json!(!is_visible));
                                 }
                             }
                         }
@@ -147,13 +171,15 @@ pub fn run() {
         .manage(TranscriberState::default())
         .setup(|app| {
             let notch = app.get_webview_window("notch").unwrap();
-            let monitor = notch.current_monitor()?.unwrap();
-            let screen_width = monitor.size().width;
-            let x = (screen_width - 300) / 2;
-            notch.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                x: x as i32,
-                y: 0,
-            }))?;
+            if let Ok(Some(monitor)) = notch.current_monitor() {
+                let scale_factor = monitor.scale_factor();
+                let logical_width = monitor.size().width as f64 / scale_factor;
+                let x = (logical_width - 300.0) / 2.0;
+                notch.set_position(tauri::Position::Logical(tauri::LogicalPosition {
+                    x,
+                    y: 0.0,
+                }))?;
+            }
             notch.set_ignore_cursor_events(true)?;
 
             let main = app.get_webview_window("main").unwrap();
@@ -220,14 +246,30 @@ pub fn run() {
                 }
             });
 
-            let hotkey = "CmdOrCtrl+Alt+Space";
-            if let Err(err) = app.global_shortcut().register(hotkey) {
+            let ptt_hotkey = "CmdOrCtrl+Alt+Space";
+            if let Err(err) = app.global_shortcut().register(ptt_hotkey) {
                 eprintln!(
                     "Warning: Failed to register shortcut '{}': {:?}",
-                    hotkey, err
+                    ptt_hotkey, err
                 );
             } else {
-                println!("Successfully registered Push-To-Talk shortcut ({})", hotkey);
+                println!(
+                    "Successfully registered Push-To-Talk shortcut ({})",
+                    ptt_hotkey
+                );
+            }
+
+            let notch_hotkey = "CmdOrCtrl+Alt+N";
+            if let Err(err) = app.global_shortcut().register(notch_hotkey) {
+                eprintln!(
+                    "Warning: Failed to register shortcut '{}': {:?}",
+                    notch_hotkey, err
+                );
+            } else {
+                println!(
+                    "Successfully registered Toggle Notch shortcut ({})",
+                    notch_hotkey
+                );
             }
 
             Ok(())
