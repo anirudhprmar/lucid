@@ -139,25 +139,27 @@ impl AudioRecorderState {
         }
     }
 
-    pub fn stop_recording_and_extract_pcm16k(&mut self) -> Vec<f32> {
-        if let Some(stream) = self.stream.take() {
-            drop(stream);
-            println!("Recording stopped");
-        }
-
+    pub fn extract_available_pcm16k(&mut self) -> Vec<f32> {
         let raw_data = if let Ok(mut buf) = self.buffer.lock() {
             std::mem::take(&mut *buf)
         } else {
             Vec::new()
         };
 
-        println!("Captured raw audio: {} samples", raw_data.len());
+        if raw_data.is_empty() {
+            return Vec::new();
+        }
 
         let mono_samples = to_mono(&raw_data, self.channels);
-        let pcm16k_samples = resample_to_16k(&mono_samples, self.sample_rate);
+        resample_to_16k(&mono_samples, self.sample_rate)
+    }
 
-        println!("Extracted {} PCM16k samples", pcm16k_samples.len());
+    pub fn stop_recording_and_extract_pcm16k(&mut self) -> Vec<f32> {
+        if let Some(stream) = self.stream.take() {
+            drop(stream);
+            println!("Recording stopped");
+        }
 
-        pcm16k_samples
+        self.extract_available_pcm16k()
     }
 }

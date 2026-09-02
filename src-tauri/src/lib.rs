@@ -12,6 +12,11 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_store::StoreExt;
 use transcriber::WhisperTranscriber;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[derive(Default)]
+pub struct ActiveRecordingSession(pub Mutex<Option<Arc<AtomicBool>>>);
+
 #[derive(Clone, Default)]
 pub struct TranscriberState {
     pub transcriber: Arc<RwLock<Option<WhisperTranscriber>>>,
@@ -74,76 +79,151 @@ pub fn run() {
                         "CmdOrCtrl+Alt+N".parse().unwrap();
 
                     if *shortcut == ptt_shortcut {
-                        // --- Push-to-Talk handler ---
-                        let audio_state = app.state::<Mutex<AudioRecorderState>>();
-                        let mut recorder = audio_state.lock().unwrap();
-
                         match event.state() {
                             ShortcutState::Pressed => {
+                                let has_model = app.try_state::<TranscriberState>().map_or(false, |s| {
+                                    s.transcriber.read().map(|l| l.is_some()).unwrap_or(false)
+                                });
+
+                                if !has_model {
+                                    let _ = app.emit("notch-state", "not-ready");
+                                    return;
+                                }
+
+                                let flag = Arc::new(AtomicBool::new(true));
+                                {
+                                    let session = app.state::<ActiveRecordingSession>();
+                                    let mut current = session.0.lock().unwrap();
+                                    if current.is_some() {
+                                        // Already recording — ignore OS auto-repeat events while holding shortcut
+                                        return;
+                                    }
+                                    *current = Some(flag.clone());
+                                }
+
+                                let audio_state = app.state::<Mutex<AudioRecorderState>>();
+                                if let Ok(mut recorder) = audio_state.lock() {
+                                    if let Err(e) = recorder.start_recording() {
+                                        eprintln!("Failed to start recording: {}", e);
+                                        let _ = app.emit("notch-state", "idle");
+                                        let session = app.state::<ActiveRecordingSession>();
+                                        if let Ok(mut current) = session.0.lock() {
+                                            current.take();
+                                        }
+                                        return;
+                                    }
+                                }
+
                                 if let Err(e) = app.emit("notch-state", "listening") {
                                     eprintln!("Failed to emit notch state listening: {}", e);
                                 }
 
-                                if let Err(e) = recorder.start_recording() {
-                                    eprintln!("Failed to start recording: {}", e);
-                                }
-                            }
-                            ShortcutState::Released => {
-                                let pcm_data = recorder.stop_recording_and_extract_pcm16k();
-                                if pcm_data.is_empty() {
-                                    println!("No audio recorded.");
-                                    if let Err(e) = app.emit("notch-state", "idle") {
-                                        eprintln!("Failed to emit notch state idle: {}", e);
-                                    }
-                                    return;
-                                }
-
-                                if let Err(e) = app.emit("notch-state", "transcribing") {
-                                    eprintln!("Failed to emit notch state transcribing: {}", e);
-                                }
-
-                                let state = app.try_state::<TranscriberState>();
-                                if state.is_none() {
-                                    app.emit("notch-state", "not-ready").ok();
-                                    return;
-                                }
-
-                                if let Some(trans_state) = app.try_state::<TranscriberState>() {
-                                    let trans_state = trans_state.inner().clone();
                                     let app_handle = app.clone();
+                                    let is_rec = flag.clone();
                                     std::thread::spawn(move || {
-                                        let transcribe_result = {
-                                            if let Ok(lock) = trans_state.transcriber.read() {
-                                                if let Some(ref transcriber) = *lock {
-                                                    transcriber.transcribe(&pcm_data)
-                                                } else {
-                                                    Err("Transcriber model is not loaded".into())
-                                                }
-                                            } else {
-                                                Err("Failed to acquire transcriber read lock"
-                                                    .into())
-                                            }
-                                        };
+                                        let mut local_pcm_buffer: Vec<f32> = Vec::new();
+                                        let mut chunk_index: usize = 0;
+                                        // 2.0 seconds chunk @ 16kHz
+                                        const CHUNK_SAMPLES: usize = 32000;
 
-                                        match transcribe_result {
-                                            Ok(text) => {
-                                                if !text.is_empty() {
-                                                    if let Err(e) = paste::paste_text(&text) {
-                                                        eprintln!("Failed to paste: {}", e);
+                                        while is_rec.load(Ordering::SeqCst) {
+                                            std::thread::sleep(std::time::Duration::from_millis(150));
+
+                                            if !is_rec.load(Ordering::SeqCst) {
+                                                break;
+                                            }
+
+                                            let new_samples = {
+                                                if let Some(state) = app_handle.try_state::<Mutex<AudioRecorderState>>() {
+                                                    if let Ok(mut rec) = state.lock() {
+                                                        rec.extract_available_pcm16k()
+                                                    } else {
+                                                        Vec::new()
+                                                    }
+                                                } else {
+                                                    Vec::new()
+                                                }
+                                            };
+
+                                            if !new_samples.is_empty() {
+                                                local_pcm_buffer.extend(new_samples);
+                                            }
+
+                                            if local_pcm_buffer.len() >= CHUNK_SAMPLES {
+                                                let chunk: Vec<f32> = local_pcm_buffer.drain(..CHUNK_SAMPLES).collect();
+                                                if let Some(trans_state) = app_handle.try_state::<TranscriberState>() {
+                                                    if let Ok(lock) = trans_state.transcriber.read() {
+                                                        if let Some(ref transcriber) = *lock {
+                                                            if let Ok(text) = transcriber.transcribe(&chunk) {
+                                                                let trimmed = text.trim();
+                                                                if !trimmed.is_empty() && !trimmed.starts_with('[') && !trimmed.starts_with('(') {
+                                                                    let formatted = if chunk_index == 0 {
+                                                                        format!("{}", trimmed)
+                                                                    } else {
+                                                                        format!(" {}", trimmed)
+                                                                    };
+                                                                    chunk_index += 1;
+                                                                    if let Err(e) = paste::paste_text(&formatted) {
+                                                                        eprintln!("Failed to stream paste: {}", e);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
-                                            Err(e) => eprintln!("Transcription error: {}", e),
+                                        }
+
+                                        // Key released -> drain final audio samples
+                                        let final_samples = {
+                                            if let Some(state) = app_handle.try_state::<Mutex<AudioRecorderState>>() {
+                                                if let Ok(mut rec) = state.lock() {
+                                                    rec.stop_recording_and_extract_pcm16k()
+                                                } else {
+                                                    Vec::new()
+                                                }
+                                            } else {
+                                                Vec::new()
+                                            }
+                                        };
+
+                                        if !final_samples.is_empty() {
+                                            local_pcm_buffer.extend(final_samples);
+                                        }
+
+                                        if local_pcm_buffer.len() >= 4000 {
+                                            if let Some(trans_state) = app_handle.try_state::<TranscriberState>() {
+                                                if let Ok(lock) = trans_state.transcriber.read() {
+                                                    if let Some(ref transcriber) = *lock {
+                                                        if let Ok(text) = transcriber.transcribe(&local_pcm_buffer) {
+                                                            let trimmed = text.trim();
+                                                            if !trimmed.is_empty() && !trimmed.starts_with('[') && !trimmed.starts_with('(') {
+                                                                let formatted = if chunk_index > 0 {
+                                                                    format!(" {}", trimmed)
+                                                                } else {
+                                                                    format!("{}", trimmed)
+                                                                };
+                                                                if let Err(e) = paste::paste_text(&formatted) {
+                                                                    eprintln!("Failed to paste tail chunk: {}", e);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         if let Err(e) = app_handle.emit("notch-state", "idle") {
                                             eprintln!("Failed to emit notch state idle: {}", e);
                                         }
                                     });
-                                } else {
-                                    eprintln!("TranscriberState is not available.");
-                                    if let Err(e) = app.emit("notch-state", "idle") {
-                                        eprintln!("Failed to emit notch state idle: {}", e);
+                                }
+                            ShortcutState::Released => {
+                                if let Some(session) = app.try_state::<ActiveRecordingSession>() {
+                                    if let Ok(mut current) = session.0.lock() {
+                                        if let Some(flag) = current.take() {
+                                            flag.store(false, Ordering::SeqCst);
+                                        }
                                     }
                                 }
                             }
@@ -167,6 +247,7 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(ActiveRecordingSession::default())
         .manage(Mutex::new(AudioRecorderState::default()))
         .manage(TranscriberState::default())
         .setup(|app| {

@@ -2,8 +2,7 @@
 
 v0.1.1
 
-- [X]- shortcuts
-- [ ]- streaming on transcription
+- [x]- streaming on transcription
 - [ ]- tap to start (hold the key combo once and speak until silence : hands free mode)
 
 v0.1.2
