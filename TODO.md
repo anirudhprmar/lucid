@@ -9,5 +9,4 @@ v0.1.2
 
 - [ ]- run the model on gpu
 - [ ]- improve onboarding ( add necessary screens)
-- [ ]- notch assist ( auto detch keyword and assist, full screen aware)
 - [ ]- byok support (support for cloud providers)

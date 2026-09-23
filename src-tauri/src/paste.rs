@@ -10,44 +10,54 @@ pub fn paste_text(text: &str) -> Result<(), Box<dyn std::error::Error + Send + S
         return Ok(());
     }
 
+    eprintln!("[paste] attempting to paste {:?}", text);
     let mut enigo = Enigo::new(&Settings::default())?;
 
+    // Give physical Ctrl+Alt+Space a moment to release before typing (tail case)
+    std::thread::sleep(Duration::from_millis(35));
+
     // Direct typing via unicode SendInput (KEYEVENTF_UNICODE)
-    // Does not touch modifier states, preventing physical Space repeats from leaking
-    if let Err(e) = enigo.text(text) {
-        eprintln!(
-            "Direct text input failed: {}, falling back to clipboard paste",
-            e
-        );
-
-        let my_gen = PASTE_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-        let saved: Option<String> = {
-            let mut clipboard = Clipboard::new()?;
-            clipboard.get_text().ok()
-        };
-
-        {
-            let mut clipboard = Clipboard::new()?;
-            clipboard.set_text(text)?;
+    match enigo.text(text) {
+        Ok(()) => {
+            eprintln!("[paste] enigo.text ok");
+            return Ok(());
         }
-
-        let _ = enigo.key(Key::Control, Direction::Press);
-        let _ = enigo.key(Key::V, Direction::Click);
-        let _ = enigo.key(Key::Control, Direction::Release);
-
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(200));
-            let current = PASTE_GENERATION.load(Ordering::SeqCst);
-            if current != my_gen {
-                return;
-            }
-            if let Some(prev) = saved {
-                if let Ok(mut clipboard) = Clipboard::new() {
-                    let _ = clipboard.set_text(prev);
-                }
-            }
-        });
+        Err(e) => {
+            eprintln!(
+                "Direct text input failed: {}, falling back to clipboard paste",
+                e
+            );
+        }
     }
+
+    let my_gen = PASTE_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let saved: Option<String> = {
+        let mut clipboard = Clipboard::new()?;
+        clipboard.get_text().ok()
+    };
+
+    {
+        let mut clipboard = Clipboard::new()?;
+        clipboard.set_text(text)?;
+    }
+
+    let _ = enigo.key(Key::Control, Direction::Press);
+    let _ = enigo.key(Key::V, Direction::Click);
+    let _ = enigo.key(Key::Control, Direction::Release);
+    eprintln!("[paste] clipboard Ctrl+V done");
+
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        let current = PASTE_GENERATION.load(Ordering::SeqCst);
+        if current != my_gen {
+            return;
+        }
+        if let Some(prev) = saved {
+            if let Ok(mut clipboard) = Clipboard::new() {
+                let _ = clipboard.set_text(prev);
+            }
+        }
+    });
 
     Ok(())
 }

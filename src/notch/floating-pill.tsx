@@ -1,5 +1,3 @@
-import Waveform from './waveform';
-import Spinner from './spinner';
 import { useEffect, useState, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { LazyStore } from '@tauri-apps/plugin-store';
@@ -60,11 +58,5 @@ export default function FloatingPill() {
     void updateStore();
   }, [state]);
 
-  return (
-    <div className='flex h-full items-center justify-center'>
-      {state === 'listening' && <Waveform />}
-      {state === 'transcribing' && <Spinner />}
-      {state === 'not-ready' && <div className='text-sm text-white'>!</div>}
-    </div>
-  );
+  return null;
 }

@@ -75,8 +75,6 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     let ptt_shortcut: tauri_plugin_global_shortcut::Shortcut =
                         "CmdOrCtrl+Alt+Space".parse().unwrap();
-                    let notch_toggle_shortcut: tauri_plugin_global_shortcut::Shortcut =
-                        "CmdOrCtrl+Alt+N".parse().unwrap();
 
                     if *shortcut == ptt_shortcut {
                         match event.state() {
@@ -123,8 +121,8 @@ pub fn run() {
                                     std::thread::spawn(move || {
                                         let mut local_pcm_buffer: Vec<f32> = Vec::new();
                                         let mut chunk_index: usize = 0;
-                                        // 2.0 seconds chunk @ 16kHz
-                                        const CHUNK_SAMPLES: usize = 32000;
+                                        // 1.2s chunk @ 16kHz for more responsive word-by-word streaming
+                                        const CHUNK_SAMPLES: usize = 19200;
 
                                         while is_rec.load(Ordering::SeqCst) {
                                             std::thread::sleep(std::time::Duration::from_millis(150));
@@ -156,6 +154,7 @@ pub fn run() {
                                                         if let Some(ref transcriber) = *lock {
                                                             if let Ok(text) = transcriber.transcribe(&chunk) {
                                                                 let trimmed = text.trim();
+                                                                eprintln!("[stream] chunk {} -> {:?}", chunk_index, trimmed);
                                                                 if !trimmed.is_empty() && !trimmed.starts_with('[') && !trimmed.starts_with('(') {
                                                                     let formatted = if chunk_index == 0 {
                                                                         format!("{}", trimmed)
@@ -167,12 +166,17 @@ pub fn run() {
                                                                         eprintln!("Failed to stream paste: {}", e);
                                                                     }
                                                                 }
+                                                            } else {
+                                                                eprintln!("[stream] transcribe error on chunk {}", chunk_index);
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
+
+                                        // show transcribing state for tail
+                                        let _ = app_handle.emit("notch-state", "transcribing");
 
                                         // Key released -> drain final audio samples
                                         let final_samples = {
@@ -191,22 +195,28 @@ pub fn run() {
                                             local_pcm_buffer.extend(final_samples);
                                         }
 
-                                        if local_pcm_buffer.len() >= 4000 {
+                                        eprintln!("[tail] buffer len {} chunk_index {}", local_pcm_buffer.len(), chunk_index);
+
+                                        if !local_pcm_buffer.is_empty() {
                                             if let Some(trans_state) = app_handle.try_state::<TranscriberState>() {
                                                 if let Ok(lock) = trans_state.transcriber.read() {
                                                     if let Some(ref transcriber) = *lock {
-                                                        if let Ok(text) = transcriber.transcribe(&local_pcm_buffer) {
-                                                            let trimmed = text.trim();
-                                                            if !trimmed.is_empty() && !trimmed.starts_with('[') && !trimmed.starts_with('(') {
-                                                                let formatted = if chunk_index > 0 {
-                                                                    format!(" {}", trimmed)
-                                                                } else {
-                                                                    format!("{}", trimmed)
-                                                                };
-                                                                if let Err(e) = paste::paste_text(&formatted) {
-                                                                    eprintln!("Failed to paste tail chunk: {}", e);
+                                                        match transcriber.transcribe(&local_pcm_buffer) {
+                                                            Ok(text) => {
+                                                                let trimmed = text.trim();
+                                                                eprintln!("[tail] -> {:?}", trimmed);
+                                                                if !trimmed.is_empty() && !trimmed.starts_with('[') && !trimmed.starts_with('(') {
+                                                                    let formatted = if chunk_index > 0 {
+                                                                        format!(" {}", trimmed)
+                                                                    } else {
+                                                                        format!("{}", trimmed)
+                                                                    };
+                                                                    if let Err(e) = paste::paste_text(&formatted) {
+                                                                        eprintln!("Failed to paste tail chunk: {}", e);
+                                                                    }
                                                                 }
                                                             }
+                                                            Err(e) => eprintln!("[tail] transcribe error: {}", e),
                                                         }
                                                     }
                                                 }
@@ -228,21 +238,6 @@ pub fn run() {
                                 }
                             }
                         }
-                    } else if *shortcut == notch_toggle_shortcut {
-                        if event.state() == ShortcutState::Pressed {
-                            if let Some(notch) = app.get_webview_window("notch") {
-                                let is_visible = notch.is_visible().unwrap_or(true);
-                                if is_visible {
-                                    notch.hide().ok();
-                                } else {
-                                    notch.show().ok();
-                                }
-
-                                if let Ok(store) = app.store("settings.json") {
-                                    store.set("notch_visible", serde_json::json!(!is_visible));
-                                }
-                            }
-                        }
                     }
                 })
                 .build(),
@@ -254,12 +249,11 @@ pub fn run() {
             let notch = app.get_webview_window("notch").unwrap();
             if let Ok(Some(monitor)) = notch.current_monitor() {
                 let scale_factor = monitor.scale_factor();
-                let logical_width = monitor.size().width as f64 / scale_factor;
-                let x = (logical_width - 300.0) / 2.0;
-                notch.set_position(tauri::Position::Logical(tauri::LogicalPosition {
-                    x,
-                    y: 0.0,
-                }))?;
+                let logical_size = monitor.size().to_logical::<f64>(scale_factor);
+                let x = (logical_size.width - 300.0) / 2.0;
+                // bottom-center, 28px above taskbar/dock
+                let y = logical_size.height - 40.0 - 28.0;
+                notch.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }))?;
             }
             notch.set_ignore_cursor_events(true)?;
 
@@ -337,19 +331,6 @@ pub fn run() {
                 println!(
                     "Successfully registered Push-To-Talk shortcut ({})",
                     ptt_hotkey
-                );
-            }
-
-            let notch_hotkey = "CmdOrCtrl+Alt+N";
-            if let Err(err) = app.global_shortcut().register(notch_hotkey) {
-                eprintln!(
-                    "Warning: Failed to register shortcut '{}': {:?}",
-                    notch_hotkey, err
-                );
-            } else {
-                println!(
-                    "Successfully registered Toggle Notch shortcut ({})",
-                    notch_hotkey
                 );
             }
 
